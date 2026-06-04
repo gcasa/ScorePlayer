@@ -28,6 +28,7 @@
     self = [super init];
     if (self != nil) {
         events = [[NSMutableArray alloc] init];
+        channelPrograms = [[NSMutableDictionary alloc] init];
         tempo = 60.0;
     }
     return self;
@@ -35,10 +36,22 @@
 - (void)dealloc
 {
     [events release];
+    [channelPrograms release];
     [super dealloc];
 }
 - (void)addEvent:(SPNoteEvent *)event { [events addObject:event]; }
 - (NSArray *)events { return events; }
+- (NSDictionary *)channelPrograms { return channelPrograms; }
+- (void)setProgram:(int)program forChannel:(int)channel
+{
+    if (channel < 0 || channel > 15)
+        return;
+    if (program < 0)
+        program = 0;
+    if (program > 127)
+        program = 127;
+    [channelPrograms setObject:[NSNumber numberWithInt:program] forKey:[NSNumber numberWithInt:channel]];
+}
 - (double)tempo { return tempo; }
 - (void)setTempo:(double)aTempo { if (aTempo > 0.0) tempo = aTempo; }
 @end
@@ -81,6 +94,11 @@
 + (NSString *)trim:(NSString *)text;
 + (NSDictionary *)parametersFromText:(NSString *)text;
 + (NSString *)keyForAnyKey:(NSArray *)keys inParameters:(NSDictionary *)params;
++ (BOOL)partDeclaration:(NSString *)declaration partName:(NSString **)partName instrumentName:(NSString **)instrumentName;
++ (NSString *)instrumentNameInParameters:(NSDictionary *)params;
++ (void)applyInstrumentName:(NSString *)instrumentName channel:(int)channel score:(SPScore *)score;
++ (BOOL)string:(NSString *)text contains:(NSString *)needle;
++ (int)programForInstrumentName:(NSString *)instrumentName;
 + (int)midiKeyFromValue:(NSString *)value parameterName:(NSString *)parameterName variables:(NSDictionary *)variables ok:(BOOL *)ok;
 + (double)frequencyForPitch:(NSString *)pitch ok:(BOOL *)ok;
 + (int)partChannel:(NSString *)part channels:(NSMutableDictionary *)channels error:(NSString **)errorMessage;
@@ -177,14 +195,40 @@
             list = [trimmed substringFromIndex:5];
             parts = [list componentsSeparatedByString:@","];
             for (p = 0; p < [parts count]; p++) {
-                if ([self partChannel:[self trim:[parts objectAtIndex:p]] channels:channels error:errorMessage] < 0)
+                NSString *partName;
+                NSString *instrumentName;
+                int channel;
+                if (![self partDeclaration:[parts objectAtIndex:p] partName:&partName instrumentName:&instrumentName])
+                    continue;
+                channel = [self partChannel:partName channels:channels error:errorMessage];
+                if (channel < 0)
                     return nil;
+                [self applyInstrumentName:instrumentName channel:channel score:score];
             }
             continue;
         }
 
-        if (!inBody)
+        if (!inBody) {
+            NSRange whitespace;
+            whitespace = [trimmed rangeOfCharacterFromSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (whitespace.location != NSNotFound) {
+                NSString *part;
+                NSString *instrumentName;
+                NSDictionary *params;
+                int channel;
+
+                part = [self trim:[trimmed substringToIndex:whitespace.location]];
+                params = [self parametersFromText:[trimmed substringFromIndex:whitespace.location + 1]];
+                instrumentName = [self instrumentNameInParameters:params];
+                if (instrumentName != nil) {
+                    channel = [self partChannel:part channels:channels error:errorMessage];
+                    if (channel < 0)
+                        return nil;
+                    [self applyInstrumentName:instrumentName channel:channel score:score];
+                }
+            }
             continue;
+        }
 
         {
             NSRange eq;
@@ -257,8 +301,11 @@
 
             if ([kind hasPrefix:@"noteUpdate"]) {
                 [[self defaultsForPart:part defaults:defaults] addEntriesFromDictionary:params];
+                [self applyInstrumentName:[self instrumentNameInParameters:params] channel:channel score:score];
                 continue;
             }
+
+            [self applyInstrumentName:[self instrumentNameInParameters:params] channel:channel score:score];
 
             if ([kind hasPrefix:@"noteOff"]) {
                 NSArray *kindParts;
@@ -463,6 +510,162 @@
             return key;
     }
     return nil;
+}
+
++ (BOOL)partDeclaration:(NSString *)declaration partName:(NSString **)partName instrumentName:(NSString **)instrumentName
+{
+    NSString *trimmed;
+    NSRange openParen;
+    NSRange closeParen;
+
+    if (partName != NULL)
+        *partName = nil;
+    if (instrumentName != NULL)
+        *instrumentName = nil;
+
+    trimmed = [self trim:declaration];
+    if ([trimmed length] == 0)
+        return NO;
+
+    openParen = [trimmed rangeOfString:@"("];
+    closeParen = [trimmed rangeOfString:@")" options:NSBackwardsSearch];
+    if (openParen.location != NSNotFound && closeParen.location != NSNotFound && closeParen.location > openParen.location) {
+        if (partName != NULL)
+            *partName = [self trim:[trimmed substringToIndex:openParen.location]];
+        if (instrumentName != NULL)
+            *instrumentName = [self trim:[trimmed substringWithRange:NSMakeRange(openParen.location + 1, closeParen.location - openParen.location - 1)]];
+    } else {
+        if (partName != NULL)
+            *partName = trimmed;
+    }
+
+    return partName == NULL || (*partName != nil && [*partName length] > 0);
+}
+
++ (NSString *)instrumentNameInParameters:(NSDictionary *)params
+{
+    return [params objectForKey:[self keyForAnyKey:[NSArray arrayWithObjects:@"instrument", @"patch", @"synthPatch", @"synthpatch", @"program", @"programName", nil] inParameters:params]];
+}
+
++ (void)applyInstrumentName:(NSString *)instrumentName channel:(int)channel score:(SPScore *)score
+{
+    if (instrumentName == nil || [instrumentName length] == 0)
+        return;
+    [score setProgram:[self programForInstrumentName:instrumentName] forChannel:channel];
+}
+
++ (BOOL)string:(NSString *)text contains:(NSString *)needle
+{
+    return [text rangeOfString:needle options:NSCaseInsensitiveSearch].location != NSNotFound;
+}
+
++ (int)programForInstrumentName:(NSString *)instrumentName
+{
+    NSString *name;
+    const char *s;
+    char *endPtr;
+    long numeric;
+
+    name = [self trim:instrumentName];
+    if ([name length] == 0)
+        return 0;
+
+    s = [name UTF8String];
+    numeric = strtol(s, &endPtr, 10);
+    if (endPtr != s && *endPtr == '\0') {
+        if (numeric < 0)
+            return 0;
+        if (numeric > 127)
+            return 127;
+        return (int)numeric;
+    }
+
+    if ([self string:name contains:@"pluck"])
+        return 24; /* Acoustic Guitar (nylon) */
+    if ([self string:name contains:@"piccolo"])
+        return 72;
+    if ([self string:name contains:@"flute"])
+        return 73;
+    if ([self string:name contains:@"recorder"])
+        return 74;
+    if ([self string:name contains:@"pan"])
+        return 75;
+    if ([self string:name contains:@"clarinet"])
+        return 71;
+    if ([self string:name contains:@"bassoon"])
+        return 70;
+    if ([self string:name contains:@"english horn"])
+        return 69;
+    if ([self string:name contains:@"oboe"])
+        return 68;
+    if ([self string:name contains:@"sax"])
+        return 64;
+    if ([self string:name contains:@"trumpet"])
+        return 56;
+    if ([self string:name contains:@"trombone"])
+        return 57;
+    if ([self string:name contains:@"tuba"])
+        return 58;
+    if ([self string:name contains:@"horn"])
+        return 60;
+    if ([self string:name contains:@"brass"])
+        return 61;
+    if ([self string:name contains:@"violin"])
+        return 40;
+    if ([self string:name contains:@"viola"])
+        return 41;
+    if ([self string:name contains:@"cello"])
+        return 42;
+    if ([self string:name contains:@"contrabass"] || [self string:name contains:@"double bass"])
+        return 43;
+    if ([self string:name contains:@"harp"])
+        return 46;
+    if ([self string:name contains:@"string"])
+        return 48;
+    if ([self string:name contains:@"choir"])
+        return 52;
+    if ([self string:name contains:@"voice"] || [self string:name contains:@"vocal"])
+        return 53;
+    if ([self string:name contains:@"organ"])
+        return 19;
+    if ([self string:name contains:@"harpsichord"])
+        return 6;
+    if ([self string:name contains:@"clav"])
+        return 7;
+    if ([self string:name contains:@"electric piano"])
+        return 4;
+    if ([self string:name contains:@"piano"])
+        return 0;
+    if ([self string:name contains:@"acoustic guitar"] || [self string:name contains:@"nylon"])
+        return 24;
+    if ([self string:name contains:@"steel guitar"])
+        return 25;
+    if ([self string:name contains:@"jazz guitar"])
+        return 26;
+    if ([self string:name contains:@"electric guitar"] || [self string:name contains:@"guitar"])
+        return 27;
+    if ([self string:name contains:@"fretless bass"])
+        return 35;
+    if ([self string:name contains:@"bass"])
+        return 32;
+    if ([self string:name contains:@"lead"])
+        return 80;
+    if ([self string:name contains:@"pad"])
+        return 88;
+    if ([self string:name contains:@"synth"])
+        return 81;
+    if ([self string:name contains:@"bell"])
+        return 14;
+    if ([self string:name contains:@"marimba"])
+        return 12;
+    if ([self string:name contains:@"xylophone"])
+        return 13;
+    if ([self string:name contains:@"vibraphone"])
+        return 11;
+    if ([self string:name contains:@"celesta"])
+        return 8;
+
+    return 0;
 }
 
 + (int)midiKeyFromValue:(NSString *)value parameterName:(NSString *)parameterName variables:(NSDictionary *)variables ok:(BOOL *)ok

@@ -1,6 +1,7 @@
 #!/bin/sh
 
 FILE=$1
-./scoreplayer ${FILE} --stdout | timidity -Od -
+echo "Playing ${FILE}"
+./scoreplayer ${FILE} --stdout | timidity -Od - > /dev/null
 
 exit 0

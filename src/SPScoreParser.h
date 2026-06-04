@@ -19,11 +19,14 @@
 @interface SPScore : NSObject
 {
     NSMutableArray *events;
+    NSMutableDictionary *channelPrograms;
     double tempo;
 }
 - (id)init;
 - (void)addEvent:(SPNoteEvent *)event;
 - (NSArray *)events;
+- (NSDictionary *)channelPrograms;
+- (void)setProgram:(int)program forChannel:(int)channel;
 - (double)tempo;
 - (void)setTempo:(double)aTempo;
 @end

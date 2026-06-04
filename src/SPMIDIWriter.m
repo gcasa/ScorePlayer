@@ -58,6 +58,28 @@
 
     ppq = 480;
     midiEvents = [NSMutableArray array];
+    {
+        NSDictionary *channelPrograms;
+        NSEnumerator *enumerator;
+        NSNumber *channelNumber;
+
+        channelPrograms = [score channelPrograms];
+        enumerator = [channelPrograms keyEnumerator];
+        while ((channelNumber = [enumerator nextObject]) != nil) {
+            NSNumber *programNumber;
+            unsigned char channel;
+            int program;
+
+            programNumber = [channelPrograms objectForKey:channelNumber];
+            channel = (unsigned char)([channelNumber intValue] & 0x0f);
+            program = [programNumber intValue];
+            if (program < 0)
+                program = 0;
+            if (program > 127)
+                program = 127;
+            [midiEvents addObject:[[[SPMIDIEvent alloc] initWithTick:0 order:0 status:0xc0 | channel data1:(unsigned char)program data2:0] autorelease]];
+        }
+    }
     events = [score events];
     for (i = 0; i < [events count]; i++) {
         SPNoteEvent *event;
@@ -95,12 +117,14 @@
     for (i = 0; i < [sorted count]; i++) {
         SPMIDIEvent *event;
         unsigned char bytes[3];
+        unsigned int byteCount;
         event = [sorted objectAtIndex:i];
         [self appendVar:[event tick] - lastTick toData:track];
         bytes[0] = [event status];
         bytes[1] = [event data1];
         bytes[2] = [event data2];
-        [track appendBytes:bytes length:3];
+        byteCount = (([event status] & 0xf0) == 0xc0 || ([event status] & 0xf0) == 0xd0) ? 2 : 3;
+        [track appendBytes:bytes length:byteCount];
         lastTick = [event tick];
     }
 

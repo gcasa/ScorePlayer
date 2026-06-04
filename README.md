@@ -62,6 +62,8 @@ Supported top-level statements:
 - `info tempo: 120`: set tempo in beats per minute. The default is `60`.
 - `var name = expression`: define a numeric variable.
 - `part piano, bass`: predeclare parts. Each part is mapped to a MIDI channel.
+- `part lead (Pluck)`: predeclare a part with an instrument hint.
+- `lead synthPatch:"Pluck"`: set a predeclared part's instrument hint.
 - `BEGIN` and `END`: delimit playable score events.
 
 Inside `BEGIN` and `END`:
@@ -71,6 +73,7 @@ Inside `BEGIN` and `END`:
 - `part(duration) keyNum: 60, velocity: 90`: add a note at the current time.
 - `part(duration) freq: c4, amp: 0.8`: add a note using a pitch or frequency.
 - `part(noteUpdate) ...`: set default note parameters for a part.
+- `part(noteUpdate) instrument: Flute`: set the part's MIDI instrument hint.
 - `part(noteOn tag) ...` and `part(noteOff tag)`: start and stop a tagged note.
 
 Expressions support numbers, variables, parentheses, and `+`, `-`, `*`, `/`.
@@ -84,6 +87,12 @@ Pitch values may be:
 Velocity can be set directly with `velocity: 1` through `velocity: 127`, or
 derived from `amp: 0.0` through `amp: 1.0`.
 
+Instrument hints from `instrument`, `patch`, `synthPatch`, `program`, or
+`programName` are mapped to the closest General MIDI program and written as
+Program Change events for SoundFont-backed players. Numeric values from `0`
+through `127` are used directly. Unknown names fall back to Acoustic Grand
+Piano. `Pluck` maps to Acoustic Guitar.
+
 ## Example
 
 Create `example.score`:
@@ -91,11 +100,11 @@ Create `example.score`:
 ```text
 info tempo: 120;
 var beat = 1;
-part lead, bass;
+part lead (Pluck), bass;
 
 BEGIN;
 lead(noteUpdate) velocity: 96;
-bass(noteUpdate) velocity: 72;
+bass(noteUpdate) instrument: Bass, velocity: 72;
 
 t 0;
 lead(beat) freq: c4;
