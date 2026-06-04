@@ -338,11 +338,20 @@
             velocity = 80;
             velocityText = [combinedParams objectForKey:@"velocity"];
             if (velocityText != nil) {
-                velocity = (int)lrint([velocityText doubleValue]);
+                BOOL ok;
+                double velocityValue;
+                velocityValue = [SPExpression evaluate:velocityText variables:variables ok:&ok];
+                if (ok)
+                    velocity = (int)lrint(velocityValue);
             } else {
                 ampText = [combinedParams objectForKey:@"amp"];
-                if (ampText != nil)
-                    velocity = (int)lrint([ampText doubleValue] * 127.0);
+                if (ampText != nil) {
+                    BOOL ok;
+                    double ampValue;
+                    ampValue = [SPExpression evaluate:ampText variables:variables ok:&ok];
+                    if (ok)
+                        velocity = (int)lrint(ampValue * 127.0);
+                }
             }
             if (velocity < 1)
                 velocity = 1;
@@ -581,7 +590,7 @@
     }
 
     if ([self string:name contains:@"pluck"])
-        return 24; /* Acoustic Guitar (nylon) */
+        return 24;
     if ([self string:name contains:@"piccolo"])
         return 72;
     if ([self string:name contains:@"flute"])

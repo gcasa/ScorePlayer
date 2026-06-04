@@ -88,10 +88,11 @@ Velocity can be set directly with `velocity: 1` through `velocity: 127`, or
 derived from `amp: 0.0` through `amp: 1.0`.
 
 Instrument hints from `instrument`, `patch`, `synthPatch`, `program`, or
-`programName` are mapped to the closest General MIDI program and written as
-Program Change events for SoundFont-backed players. Numeric values from `0`
-through `127` are used directly. Unknown names fall back to Acoustic Grand
-Piano. `Pluck` maps to Acoustic Guitar.
+`programName` are mapped to clean General MIDI programs and written as Program
+Change events for SoundFont-backed players. Numeric values from `0` through
+`127` are used directly. Unknown names, including MusicKit-specific synth patch
+names without a clean General MIDI equivalent, fall back to Acoustic Grand
+Piano.
 
 ## Example
 
