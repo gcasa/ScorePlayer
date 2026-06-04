@@ -4,7 +4,7 @@
 
 static void usage(void)
 {
-    fprintf(stderr, "usage: scoreplayer file.score [--midi out.mid] [--no-play]\n");
+    fprintf(stderr, "usage: scoreplayer file.score [--midi out.mid | --stdout] [--no-play]\n");
 }
 
 static BOOL commandExists(NSString *command)
@@ -60,6 +60,7 @@ int main(int argc, const char *argv[])
     NSString *scorePath;
     NSString *midiPath;
     BOOL play;
+    BOOL writeStdout;
     int i;
     SPScore *score;
     NSString *errorMessage;
@@ -69,6 +70,7 @@ int main(int argc, const char *argv[])
     scorePath = nil;
     midiPath = nil;
     play = YES;
+    writeStdout = NO;
     result = 0;
 
     for (i = 1; i < argc; i++) {
@@ -84,6 +86,9 @@ int main(int argc, const char *argv[])
             }
             i++;
             midiPath = [NSString stringWithUTF8String:argv[i]];
+        } else if ([arg isEqualToString:@"--stdout"]) {
+            writeStdout = YES;
+            play = NO;
         } else if (scorePath == nil) {
             scorePath = arg;
         } else {
@@ -99,7 +104,13 @@ int main(int argc, const char *argv[])
         return 1;
     }
 
-    if (midiPath == nil) {
+    if (writeStdout && midiPath != nil) {
+        usage();
+        [pool release];
+        return 1;
+    }
+
+    if (!writeStdout && midiPath == nil) {
         NSString *base;
         base = [scorePath stringByDeletingPathExtension];
         midiPath = [base stringByAppendingPathExtension:@"mid"];
@@ -113,16 +124,22 @@ int main(int argc, const char *argv[])
         return 1;
     }
 
-    if (![SPMIDIWriter writeScore:score toFile:midiPath error:&errorMessage]) {
-        fprintf(stderr, "%s\n", errorMessage != nil ? [errorMessage UTF8String] : "MIDI write failed.");
-        [pool release];
-        return 1;
-    }
+    if (writeStdout) {
+        NSData *midiData;
+        midiData = [SPMIDIWriter dataForScore:score];
+        [[NSFileHandle fileHandleWithStandardOutput] writeData:midiData];
+    } else {
+        if (![SPMIDIWriter writeScore:score toFile:midiPath error:&errorMessage]) {
+            fprintf(stderr, "%s\n", errorMessage != nil ? [errorMessage UTF8String] : "MIDI write failed.");
+            [pool release];
+            return 1;
+        }
 
-    printf("Wrote %s (%lu notes, tempo %.2f)\n",
-           [midiPath fileSystemRepresentation],
-           (unsigned long)[[score events] count],
-           [score tempo]);
+        printf("Wrote %s (%lu notes, tempo %.2f)\n",
+               [midiPath fileSystemRepresentation],
+               (unsigned long)[[score events] count],
+               [score tempo]);
+    }
 
     if (play)
         result = runPlayer(midiPath);

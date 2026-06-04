@@ -44,7 +44,7 @@
 
 @implementation SPMIDIWriter
 
-+ (BOOL)writeScore:(SPScore *)score toFile:(NSString *)path error:(NSString **)errorMessage
++ (NSData *)dataForScore:(SPScore *)score
 {
     NSMutableArray *midiEvents;
     NSMutableData *track;
@@ -123,6 +123,14 @@
     [self append32:[track length] toData:file];
     [file appendData:track];
 
+    return file;
+}
+
++ (BOOL)writeScore:(SPScore *)score toFile:(NSString *)path error:(NSString **)errorMessage
+{
+    NSData *file;
+
+    file = [self dataForScore:score];
     if (![file writeToFile:path atomically:YES]) {
         if (errorMessage != NULL)
             *errorMessage = @"Could not write MIDI file.";

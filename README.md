@@ -31,13 +31,16 @@ make clean
 ## Usage
 
 ```sh
-./scoreplayer file.score [--midi out.mid] [--no-play]
+./scoreplayer file.score [--midi out.mid | --stdout] [--no-play]
 ```
 
 Options:
 
 - `--midi out.mid`: write MIDI output to the specified path. If omitted, the
   output path is the input file name with a `.mid` extension.
+- `--stdout`: write binary MIDI output to stdout instead of a file. This also
+  disables automatic playback so the MIDI stream can be piped to another
+  command.
 - `--no-play`: write the MIDI file without launching a player.
 
 When playback is enabled, ScorePlayer tries the first available player in this
@@ -117,6 +120,12 @@ Convert it without launching a player:
 ./scoreplayer example.score --midi example.mid --no-play
 ```
 
+Or stream the MIDI directly to TiMidity:
+
+```sh
+./scoreplayer example.score --stdout | timidity -
+```
+
 Successful output looks like:
 
 ```text
@@ -126,4 +135,6 @@ Wrote example.mid (5 notes, tempo 120.00)
 ## Notes
 
 ScorePlayer writes a single-track, type-0 MIDI file at 480 pulses per quarter
-note. MIDI channel 10, the percussion channel, is skipped when assigning parts.
+note. Each named part is assigned its own MIDI channel. MIDI channel 10, the
+percussion channel, is skipped, so up to 15 parts can be represented without
+channel reuse.

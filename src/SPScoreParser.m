@@ -83,7 +83,7 @@
 + (NSString *)keyForAnyKey:(NSArray *)keys inParameters:(NSDictionary *)params;
 + (int)midiKeyFromValue:(NSString *)value parameterName:(NSString *)parameterName variables:(NSDictionary *)variables ok:(BOOL *)ok;
 + (double)frequencyForPitch:(NSString *)pitch ok:(BOOL *)ok;
-+ (int)partChannel:(NSString *)part channels:(NSMutableDictionary *)channels;
++ (int)partChannel:(NSString *)part channels:(NSMutableDictionary *)channels error:(NSString **)errorMessage;
 + (NSMutableDictionary *)defaultsForPart:(NSString *)part defaults:(NSMutableDictionary *)defaults;
 + (void)closeActiveNote:(SPActiveNote *)active atTime:(double)time score:(SPScore *)score;
 @end
@@ -176,8 +176,10 @@
             NSString *list;
             list = [trimmed substringFromIndex:5];
             parts = [list componentsSeparatedByString:@","];
-            for (p = 0; p < [parts count]; p++)
-                [self partChannel:[self trim:[parts objectAtIndex:p]] channels:channels];
+            for (p = 0; p < [parts count]; p++) {
+                if ([self partChannel:[self trim:[parts objectAtIndex:p]] channels:channels error:errorMessage] < 0)
+                    return nil;
+            }
             continue;
         }
 
@@ -249,7 +251,9 @@
             params = [self parametersFromText:rest];
             combinedParams = [NSMutableDictionary dictionaryWithDictionary:[self defaultsForPart:part defaults:defaults]];
             [combinedParams addEntriesFromDictionary:params];
-            channel = [self partChannel:part channels:channels];
+            channel = [self partChannel:part channels:channels error:errorMessage];
+            if (channel < 0)
+                return nil;
 
             if ([kind hasPrefix:@"noteUpdate"]) {
                 [[self defaultsForPart:part defaults:defaults] addEntriesFromDictionary:params];
@@ -584,7 +588,7 @@
     return 440.0 * pow(2.0, (key - 69.0) / 12.0);
 }
 
-+ (int)partChannel:(NSString *)part channels:(NSMutableDictionary *)channels
++ (int)partChannel:(NSString *)part channels:(NSMutableDictionary *)channels error:(NSString **)errorMessage
 {
     NSNumber *number;
     int channel;
@@ -592,11 +596,17 @@
     number = [channels objectForKey:part];
     if (number != nil)
         return [number intValue];
-    channel = (int)[channels count] % 16;
-    if (channel == 9)
-        channel = (channel + 1) % 16;
-    [channels setObject:[NSNumber numberWithInt:channel] forKey:part];
-    return channel;
+    for (channel = 0; channel < 16; channel++) {
+        if (channel == 9)
+            continue;
+        if ([[channels allValues] containsObject:[NSNumber numberWithInt:channel]])
+            continue;
+        [channels setObject:[NSNumber numberWithInt:channel] forKey:part];
+        return channel;
+    }
+    if (errorMessage != NULL)
+        *errorMessage = [NSString stringWithFormat:@"Too many parts. MIDI output supports 15 separate non-percussion channels."];
+    return -1;
 }
 
 + (NSMutableDictionary *)defaultsForPart:(NSString *)part defaults:(NSMutableDictionary *)defaults
