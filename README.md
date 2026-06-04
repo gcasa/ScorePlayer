@@ -15,6 +15,13 @@ make
 
 This produces a `scoreplayer` executable in the project root.
 
+On GNUstep systems, you can also build with GNUstep Make:
+
+```sh
+. /usr/share/GNUstep/Makefiles/GNUstep.sh
+gmake -f GNUmakefile
+```
+
 To remove generated build outputs:
 
 ```sh
